@@ -1,0 +1,37 @@
+export const statuses=['À ramasser','Ramassée','Reçue','En préparation','Prête','En livraison','Livrée','Problème','Annulée','Clôturée'] as const;
+export type Status=typeof statuses[number];
+export type Item={id:string;type:string;brand:string;model:string;size:string;quantity:number;color:string;description:string;condition:string;price:number;notes:string};
+export type Photo={id:string;data:string;stage:string;name:string;date:string};
+export type Payment={id:string;amount:number;method:string;date:string;notes:string};
+export type Event={id:string;date:string;action:string};
+export type Order={id:string;number:number;created:string;reference:string;name:string;phone:string;prefix:string;address:string;zone:string;city:string;notes:string;pickupAddress:string;pickupZone:string;pickupDate:string;pickupTime:string;pickupFee:number;deliveryAddress:string;deliveryZone:string;deliveryDate:string;deliveryTime:string;deliveryFee:number;extra:number;discount:number;status:Status;problem:string;items:Item[];photos:Photo[];payments:Payment[];history:Event[]};
+export const uid=()=>crypto.randomUUID();
+export const today=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`};
+export const event=(action:string):Event=>({id:uid(),date:new Date().toISOString(),action});
+export const item=():Item=>({id:uid(),type:'Baskets',brand:'',model:'',size:'',quantity:1,color:'',description:'',condition:'',price:0,notes:''});
+export const newOrder=():Order=>({id:uid(),number:0,created:new Date().toISOString(),reference:'',name:'',phone:'',prefix:'+216',address:'',zone:'',city:'',notes:'',pickupAddress:'',pickupZone:'',pickupDate:today(),pickupTime:'',pickupFee:0,deliveryAddress:'',deliveryZone:'',deliveryDate:'',deliveryTime:'',deliveryFee:0,extra:0,discount:0,status:'À ramasser',problem:'',items:[item()],photos:[],payments:[],history:[]});
+const rounded=(n:number)=>Math.round((n+Number.EPSILON)*1000)/1000;
+export const shoes=(o:Order)=>rounded(o.items.reduce((n,i)=>n+i.price*i.quantity,0));
+export const total=(o:Order)=>rounded(Math.max(0,shoes(o)+o.pickupFee+o.deliveryFee+o.extra-o.discount));
+export const paid=(o:Order)=>rounded(o.payments.reduce((n,p)=>n+p.amount,0));
+export const remaining=(o:Order)=>rounded(Math.max(0,total(o)-paid(o)));
+export const paymentLabel=(o:Order)=>remaining(o)===0?'Payé':paid(o)>0?'Partiel':'Non payé';
+export const money=(n:number)=>new Intl.NumberFormat('fr-TN',{minimumFractionDigits:2,maximumFractionDigits:3}).format(n)+' DT';
+export const numberLabel=(n:number)=>'#'+String(n).padStart(6,'0');
+export const dateLabel=(s:string)=>s?new Date(s).toLocaleDateString('fr-TN'):'Non planifiée';
+export const localDay=(s:string)=>{const d=new Date(s);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`};
+export const validateOrder=(o:Order)=>{
+ if(!o||typeof o!=='object'||typeof o.id!=='string'||!Number.isInteger(o.number)||o.number<0||!statuses.includes(o.status)||!o.name?.trim())throw Error('Commande invalide : nom, numéro ou statut.');
+ for(const k of ['created','reference','name','phone','prefix','address','zone','city','notes','pickupAddress','pickupZone','pickupDate','pickupTime','deliveryAddress','deliveryZone','deliveryDate','deliveryTime','problem'] as const)if(typeof o[k]!=='string')throw Error('Champ de commande invalide.');
+ if(Number.isNaN(Date.parse(o.created)))throw Error('Date de création invalide.');
+ for(const k of ['pickupFee','deliveryFee','extra','discount'] as const)if(!Number.isFinite(o[k])||o[k]<0)throw Error('Les montants doivent être positifs.');
+ if(!Array.isArray(o.items)||!o.items.length||!Array.isArray(o.photos)||!Array.isArray(o.payments)||!Array.isArray(o.history))throw Error('Articles ou données associés invalides.');
+ for(const i of o.items){if(typeof i.id!=='string'||!Number.isInteger(i.quantity)||i.quantity<1||!Number.isFinite(i.price)||i.price<0)throw Error('Article invalide.');for(const k of ['type','brand','model','size','color','description','condition','notes'] as const)if(typeof i[k]!=='string')throw Error('Article incomplet.');}
+ for(const p of o.photos)if(typeof p.id!=='string'||typeof p.stage!=='string'||typeof p.name!=='string'||typeof p.date!=='string'||typeof p.data!=='string'||!/^data:image\/(jpeg|png|webp);base64,[a-zA-Z0-9+/=]+$/.test(p.data)||p.data.length>7000000)throw Error('Photo invalide.');
+ for(const p of o.payments)if(typeof p.id!=='string'||!Number.isFinite(p.amount)||p.amount<=0||typeof p.method!=='string'||typeof p.notes!=='string'||typeof p.date!=='string'||Number.isNaN(Date.parse(p.date)))throw Error('Paiement invalide.');
+ for(const e of o.history)if(typeof e.id!=='string'||typeof e.action!=='string'||typeof e.date!=='string'||Number.isNaN(Date.parse(e.date)))throw Error('Historique invalide.');
+ if(o.discount>shoes(o)+o.pickupFee+o.deliveryFee+o.extra)throw Error('La remise dépasse le montant de la commande.');
+ if(paid(o)>total(o))throw Error('Le montant payé dépasse le total.');
+ if(o.status==='Clôturée'&&remaining(o)>0)throw Error('Encaissez le solde avant de clôturer.');
+};
+export const matches=(o:Order,q:string)=>{const clean=(s:string)=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();return clean([numberLabel(o.number),o.reference,o.name,o.phone,o.prefix+o.phone,o.city,o.zone,o.address,o.pickupAddress,o.pickupZone,o.deliveryAddress,o.deliveryZone,o.status,o.created.slice(0,10),o.pickupDate,o.deliveryDate,...o.items.flatMap(i=>[i.brand,i.model,i.type])].join(' ')).includes(clean(q.trim()));};
